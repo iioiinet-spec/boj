@@ -667,41 +667,84 @@ function drawObs(){
     else if(o.k===5&&!o.got)drawCoin(c,x,o.y,T);
   }
 }
+/* ---- 도트 파티클 ---- */
 function drawParts(){
-  c.save();
+  const s=PXS;
   for(const p of parts){
     const a=cl(p.l/p.m,0,1);
-    c.globalAlpha=a;c.globalCompositeOperation=p.k===1?'source-over':'lighter';
-    c.fillStyle=p.c;c.beginPath();c.arc(p.x,p.y,p.r*(p.k===1?1:a*.5+.5),0,TAU);c.fill();
+    if(a<0.12)continue;
+    const r=M.max(1,M.round(p.r*(p.k===1?1.2:a*.6+.5)/s));
+    c.fillStyle=p.c;
+    c.fillRect(snap(p.x)-r*s,snap(p.y)-r*s,r*2*s,r*2*s);
   }
-  c.restore();c.globalCompositeOperation='source-over';
 }
-function txt(s,x,y,sz,col,al,w){
-  c.font=(w||'700')+' '+sz+'px '+FONT;
-  c.textAlign=al||'left';c.textBaseline='alphabetic';
-  c.fillStyle=col;c.fillText(s,x,y);
+/* ---- 픽셀 글꼴 : 절반 크기로 그린 뒤 2배 확대 ---- */
+const TSC=2;
+let _tcv=null,_tcx=null;
+const _tcache=new Map();
+function tmeasure(s,fs,w){
+  if(!_tcx){_tcv=document.createElement('canvas');_tcv.width=8;_tcv.height=8;
+    _tcx=_tcv.getContext('2d')}
+  _tcx.font=w+' '+fs+'px '+FONT;
+  return _tcx.measureText(s).width;
 }
-function txtS(s,x,y,sz,col,al,w,sh){
-  c.font=(w||'700')+' '+sz+'px '+FONT;
-  c.textAlign=al||'left';c.textBaseline='alphabetic';
-  c.save();c.shadowColor='rgba(6,14,26,'+(sh||.85)+')';
-  c.shadowBlur=sz*.45;c.shadowOffsetY=2;
-  c.fillStyle=col;c.fillText(s,x,y);c.fillText(s,x,y);c.restore();
+function tcell(s,size,col,weight,ol){
+  const fs=M.max(7,M.round(size/TSC)), w=weight||'700',
+        key=s+'|'+fs+'|'+col+'|'+w+'|'+(ol||'');
+  let e=_tcache.get(key);
+  if(e)return e;
+  const tw=M.ceil(tmeasure(s,fs,w))+4, th=M.ceil(fs*1.6)+4,
+        base=M.round(fs*1.15)+2;
+  const cv2=document.createElement('canvas');
+  cv2.width=tw;cv2.height=th;
+  const g=cv2.getContext('2d');
+  g.font=w+' '+fs+'px '+FONT;g.textBaseline='alphabetic';
+  if(ol){g.fillStyle=ol;
+    for(const d of[[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[1,-1],[-1,1],[1,1]])
+      g.fillText(s,2+d[0],base+d[1]);}
+  g.fillStyle=col;g.fillText(s,2,base);
+  e={cv:cv2,w:tw,h:th,base};
+  if(_tcache.size>500)_tcache.clear();
+  _tcache.set(key,e);
+  return e;
 }
-function panel(x,y,w,h,r,a){
-  rr(c,x,y,w,h,r||14);
-  c.fillStyle='rgba(10,20,34,'+(a===undefined?.78:a)+')';c.fill();
-  c.strokeStyle='rgba(160,210,250,.3)';c.lineWidth=1.4;c.stroke();
+function ptxt(s,x,y,size,col,align,weight,ol){
+  const e=tcell(String(s),size,col,weight,ol);
+  const dw=e.w*TSC, dh=e.h*TSC;
+  let X=align==='center'?x-dw/2:align==='right'?x-dw:x;
+  X=M.round(X/TSC)*TSC;
+  const Y=M.round((y-e.base*TSC)/TSC)*TSC;
+  c.imageSmoothingEnabled=false;
+  c.drawImage(e.cv,0,0,e.w,e.h,X,Y,dw,dh);
+}
+function ptw(s,size,weight){               /* 확대 후 너비 */
+  return tcell(String(s),size,'#000',weight).w*TSC;
+}
+/* ---- 픽셀 패널 · 버튼 ---- */
+const UI={bd:'#0d1420',fc:'#1b2a3e',hi:'#35506e',lo:'#0f1a28',
+          tx:'#dfeaf7',dim:'#8fa6c0',gold:'#ffd24a'};
+function ppanel(x,y,w,h,fill){
+  const s=PXS;
+  x=snap(x);y=snap(y);w=snap(w);h=snap(h);
+  c.fillStyle=UI.bd;c.fillRect(x,y,w,h);
+  c.fillStyle=fill||UI.fc;c.fillRect(x+s,y+s,w-2*s,h-2*s);
+  c.fillStyle=UI.hi;
+  c.fillRect(x+s,y+s,w-2*s,s);c.fillRect(x+s,y+s,s,h-2*s);
+  c.fillStyle=UI.lo;
+  c.fillRect(x+s,y+h-2*s,w-2*s,s);c.fillRect(x+w-2*s,y+s,s,h-2*s);
 }
 let hit=[];
-function btnUI(x,y,w,h,label,on,col,fn,sz){
-  rr(c,x,y,w,h,11);
-  c.fillStyle=on?'rgba(255,255,255,.14)':'rgba(6,14,26,.4)';c.fill();
-  c.strokeStyle=on?col:'rgba(160,210,250,.28)';c.lineWidth=on?2.6:1.3;c.stroke();
-  txt(label,x+w/2,y+h/2+(sz||15)*0.36,sz||15,on?'#fff':'rgba(214,232,250,.72)','center','800');
+function pbtn(x,y,w,h,label,on,col,fn,sz){
+  const s=PXS;
+  x=snap(x);y=snap(y);w=snap(w);h=snap(h);
+  c.fillStyle=on?col:UI.bd;c.fillRect(x,y,w,h);
+  c.fillStyle=on?'#10263a':'#16233a';c.fillRect(x+s,y+s,w-2*s,h-2*s);
+  c.fillStyle=on?col:UI.hi;c.fillRect(x+s,y+s,w-2*s,s);
+  c.fillStyle=UI.lo;c.fillRect(x+s,y+h-2*s,w-2*s,s);
+  ptxt(label,x+w/2,y+h/2+(sz||20)*0.34,sz||20,on?'#ffffff':UI.dim,'center','800','#0a1018');
   hit.push({x0:x,y0:y,x1:x+w,y1:y+h,f:fn});
 }
-/* 규칙 아이콘 — 도트 */
+/* ---- 규칙 아이콘 ---- */
 const RICON=[
  {g:['...........',
      '..o..o..o..',
@@ -723,79 +766,79 @@ const RICON=[
   p:{o:'#c3d0dc',r:'#e0483c'}}
 ];
 function icon(k,x,y){
-  const I=RICON[k],s=3;
-  px(c,I.g,I.p,M.round(x-I.g[0].length*s/2),M.round(y-I.g.length*s/2),s);
+  const I=RICON[k],s=PXS*2;
+  px(c,I.g,I.p,snap(x-I.g[0].length*s/2),snap(y-I.g.length*s/2),s);
 }
+/* ---- 카드 ---- */
 function ruleCard(x,y,w,h){
-  panel(x,y,w,h,16);
-  txt('3초 규칙',x+20,y+30,17,'#ffd24a','left','800');
+  ppanel(x,y,w,h);
+  ptxt('3초 규칙',x+22,y+34,22,UI.gold,'left','800','#0a1018');
   const rows=btn
-    ?[[0,'가시 · 구덩이 · 상자','점프!','#9ff0c8'],
-      [1,'강철벽','대시로 부수기','#8ad6ff'],
-      [2,'톱날 아래','점프 금지','#ffb0a0']]
-    :[[0,'가시 · 구덩이 · 상자','점프!','#9ff0c8'],
-      [2,'톱날 아래','점프 금지','#ffb0a0']];
-  const step=btn?42:56, y0=btn?y+52:y+66;
+    ?[[0,'가시 · 구덩이 · 상자  ▸ 점프','#9ff0c8'],
+      [1,'강철벽  ▸ 대시로 부수기','#8ad6ff'],
+      [2,'톱날 아래  ▸ 점프 금지','#ffb0a0']]
+    :[[0,'가시 · 구덩이 · 상자  ▸ 점프','#9ff0c8'],
+      [2,'톱날 아래  ▸ 점프 금지','#ffb0a0']];
+  const step=btn?44:56, y0=btn?y+62:y+74;
   for(let i=0;i<rows.length;i++){
     const ry=y0+i*step;
-    icon(rows[i][0],x+48,ry+17);
-    txt(rows[i][1],x+88,ry+11,15,'rgba(226,242,255,.92)','left','700');
-    txt(rows[i][2],x+88,ry+31,16,rows[i][3],'left','800');
+    icon(rows[i][0],x+52,ry-8);
+    ptxt(rows[i][1],x+92,ry,22,rows[i][2],'left','800','#0a1018');
   }
-  if(!btn)txt('1버튼 모드 — 강철벽은 나오지 않습니다',
-    x+20,y+h-16,12,'rgba(200,222,244,.72)','left','600');
+  if(!btn)ptxt('1버튼 — 강철벽 없음',x+22,y+h-20,18,UI.dim,'left','700','#0a1018');
 }
 function charCard(x,y,w,h,i){
-  const on=i===skin,sk=SKINS[i];
-  c.save();rr(c,x,y,w,h,13);c.clip();
-  c.fillStyle=lg(c,0,y,0,y+h,[[0,'rgba(18,34,54,.9)'],[1,'rgba(8,18,32,.9)']]);
-  c.fillRect(x,y,w,h);
-  drawRunner(c,x+w/2,y+h-26,sk,{run:T*7+i,air:false,sq:1,t:T,lean:.04});
-  c.restore();
-  if(on){c.save();c.globalAlpha=.5+M.sin(T*3)*.2;
-    rr(c,x-3,y-3,w+6,h+6,16);c.strokeStyle=sk.ui;c.lineWidth=2;c.stroke();c.restore()}
-  rr(c,x,y,w,h,13);
-  c.strokeStyle=on?sk.ui:'rgba(160,210,250,.3)';c.lineWidth=on?2.6:1.3;c.stroke();
-  txt(sk.n,x+w/2,y+h-7,13,on?'#fff':'rgba(214,232,250,.7)','center','800');
+  const on=i===skin, sk=SKINS[i], s=PXS;
+  x=snap(x);y=snap(y);w=snap(w);h=snap(h);
+  c.fillStyle=on?sk.ui:UI.bd;c.fillRect(x,y,w,h);
+  c.fillStyle='#132032';c.fillRect(x+s,y+s,w-2*s,h-2*s);
+  c.fillStyle=on?sk.ui:UI.hi;c.fillRect(x+s,y+s,w-2*s,s);
+  c.fillStyle=UI.lo;c.fillRect(x+s,y+h-2*s,w-2*s,s);
+  drawRunner(c,x+w/2,y+h-26,sk,{run:(T*5+i*2),air:false,t:T,px:PXS});
+  ptxt(sk.n,x+w/2,y+h-7,20,on?'#ffffff':UI.dim,'center','800','#0a1018');
   hit.push({x0:x,y0:y,x1:x+w,y1:y+h,
     f:()=>{skin=i;try{localStorage.rnSkin=i}catch(e){};snd(600+i*110,.07,'square',.04,150)}});
 }
 /* ---- HUD ---- */
 function hud(){
-  const sk=curSkin();
-  txtS(scoreM()+' m',VW/2,56,40,'#fff','center','800',.95);
+  const s=PXS, sk=curSkin();
+  ptxt(scoreM()+' m',VW/2,56,44,'#ffffff','center','800','#0a1018');
   if(mode===1){
-    txtS((duel.turn?'2P':'1P')+' 차례',VW/2,80,15,sk.ui,'center','800');
-    if(duel.turn===1)txtS('1P 기록  '+duel.sc[0]+' m',VW/2,102,14,
-      'rgba(255,255,255,.85)','center','700');
-  }else txtS('BEST '+best[btn]+' m',VW/2,80,14,'rgba(255,255,255,.8)','center','700');
-  txtS(TC?TC.name:'',18,30,14,'rgba(255,255,255,.85)','left','700');
-  txtS('★ '+coins,VW-18,30,15,'#ffd24a','right','800');
-  /* 대시 게이지 */
+    ptxt((duel.turn?'2P':'1P'),VW/2,84,22,sk.ui,'center','800','#0a1018');
+    if(duel.turn===1)
+      ptxt('1P  '+duel.sc[0]+' m',VW/2,110,20,UI.gold,'center','800','#0a1018');
+  }else ptxt('BEST '+best[btn],VW/2,84,20,'#cfe0f2','center','800','#0a1018');
+  ptxt(TC?TC.n:'',18,30,20,'#ffffff','left','800','#0a1018');
+  ptxt('★'+coins,VW-18,34,22,UI.gold,'right','800','#0a1018');
+  /* 대시 게이지 — 칸 단위 */
   if(btn){
-    const bw=108,bx=18,by=48;
-    c.fillStyle='rgba(6,14,26,.5)';rr(c,bx,by,bw,11,5.5);c.fill();
-    const f=P.dashT>0?1:1-P.cool/DASHC;
-    c.fillStyle=P.cool>0&&P.dashT<=0?'rgba(150,180,210,.6)':sk.ui;
-    rr(c,bx+1.5,by+1.5,M.max(0,(bw-3)*f),8,4);c.fill();
-    txt('DASH',bx+bw+8,by+10,11,'rgba(226,242,255,.85)','left','800');
+    const n=8,bw=s*5,bx=snap(18),by=snap(42),f=P.dashT>0?1:1-P.cool/DASHC;
+    c.fillStyle=UI.bd;c.fillRect(bx-s,by-s,n*(bw+s)+s,s*7);
+    for(let i=0;i<n;i++){
+      c.fillStyle=(i/n<f)?(P.cool>0&&P.dashT<=0?'#6f8aa8':sk.ui):'#1b2a3e';
+      c.fillRect(bx+i*(bw+s),by,bw,s*5);
+    }
+    ptxt('DASH',bx+n*(bw+s)+10,by+s*5,18,'#cfe0f2','left','800','#0a1018');
   }
-  if(msgT>0){c.save();c.globalAlpha=cl(msgT/.4,0,1);
-    txtS(msg,PX+40,GY-170,24,'#ffd24a','left','800');c.restore()}
+  if(msgT>0){
+    c.save();c.globalAlpha=cl(msgT/.4,0,1);
+    ptxt(msg,PX+70,GY-190,30,UI.gold,'left','800','#0a1018');c.restore();
+  }
 }
+/* ---- 화면 ---- */
 function render(){
   hit=[];
   c.setTransform(DPR,0,0,DPR,0,0);
+  c.imageSmoothingEnabled=false;
   c.save();
-  if(shake>0)c.translate(rnd(-1,1)*shake*11,rnd(-1,1)*shake*11);
+  if(shake>0)c.translate(snap(rnd(-1,1)*shake*12),snap(rnd(-1,1)*shake*12));
   drawBG(camX,T);
-  const sp=solidSpans();
   drawObs();
-  drawGround(camX,sp);
+  drawGround(camX,solidSpans());
   if(S!=='menu'&&S!=='result'){
     const sk=curSkin();
-    drawRunner(c,PX,GY+P.y,sk,{run:P.run,air:P.air,sq:P.sq,t:T,
-      dash:P.dashT/DASHT,lean:P.air?cl(P.vy/900,-.2,.22):.05,dead:!P.alive});
+    drawRunner(c,PX,GY+P.y,sk,{run:P.run,air:P.air,t:T,
+      dash:P.dashT/DASHT,dead:!P.alive,px:PXS});
   }
   drawParts();
   c.restore();
@@ -808,111 +851,94 @@ function render(){
   else if(S==='result')resultScreen();
   else if(S==='pause'){
     hud();
-    c.fillStyle='rgba(4,12,24,.62)';c.fillRect(0,0,VW,VH);
-    txtS('일시정지',VW/2,VH/2-6,34,'#fff','center','800');
-    txtS('ESC — 계속   ·   M — 메뉴로',VW/2,VH/2+28,15,
-      'rgba(220,235,250,.9)','center','600');
+    c.fillStyle='rgba(8,14,26,.72)';c.fillRect(0,0,VW,VH);
+    ptxt('일시정지',VW/2,VH/2-8,40,'#ffffff','center','800','#0a1018');
+    ptxt('ESC 계속   ·   M 메뉴',VW/2,VH/2+34,22,'#cfe0f2','center','700','#0a1018');
   }
 }
 function menuScreen(){
-  c.fillStyle=lg(c,0,0,0,VH,
-    [[0,'rgba(6,16,30,.72)'],[.5,'rgba(6,16,30,.55)'],[1,'rgba(6,16,30,.78)']]);
-  c.fillRect(0,0,VW,VH);
-  txtS('DASH RUNNER',VW/2,62,44,'#fff','center','800');
-  txtS('꼬마 공룡들의 달리기 — 점프하고 대시!',VW/2,88,15,'#ffd24a','center','700');
+  c.fillStyle='rgba(8,14,26,.68)';c.fillRect(0,0,VW,VH);
+  ptxt('DASH RUNNER',VW/2,58,46,'#ffffff','center','800','#0a1018');
+  ptxt('꼬마 공룡 달리기',VW/2,88,22,UI.gold,'center','800','#0a1018');
 
-  ruleCard(46,106,420,200);
+  ruleCard(40,106,440,198);
 
-  panel(494,106,420,200,16);
-  txt('모드',514,136,13,'rgba(200,226,246,.85)','left','700');
-  btnUI(514,146,180,42,'혼자 하기',mode===0,'#9ff0c8',()=>{mode=0;snd(520,.07,'square',.04,150)});
-  btnUI(714,146,180,42,'2인 대결',mode===1,'#ffd24a',()=>{mode=1;snd(620,.07,'square',.04,150)});
-  txt('버튼',514,218,13,'rgba(200,226,246,.85)','left','700');
-  btnUI(514,228,180,42,'1버튼 (점프)',btn===0,'#8ad6ff',
+  ppanel(500,106,420,198);
+  ptxt('모드',522,136,20,'#cfe0f2','left','800','#0a1018');
+  pbtn(520,146,186,46,'혼자 하기',mode===0,'#9ff0c8',
+    ()=>{mode=0;snd(520,.07,'square',.04,150)});
+  pbtn(716,146,186,46,'2인 대결',mode===1,'#ffd24a',
+    ()=>{mode=1;snd(620,.07,'square',.04,150)});
+  ptxt('버튼',522,220,20,'#cfe0f2','left','800','#0a1018');
+  pbtn(520,230,186,46,'1버튼',btn===0,'#8ad6ff',
     ()=>{btn=0;try{localStorage.rnBtn=0}catch(e){};snd(520,.07,'square',.04,150)});
-  btnUI(714,228,180,42,'2버튼 (점프+대시)',btn===1,'#8ad6ff',
-    ()=>{btn=1;try{localStorage.rnBtn=1}catch(e){};snd(620,.07,'square',.04,150)},13);
-  txt(mode===1?'두 사람이 똑같은 코스를 번갈아 달립니다':'기록에 도전해 보세요',
-    514,292,12,'rgba(200,222,244,.72)','left','600');
+  pbtn(716,230,186,46,'2버튼',btn===1,'#8ad6ff',
+    ()=>{btn=1;try{localStorage.rnBtn=1}catch(e){};snd(620,.07,'square',.04,150)});
 
-  const cw=132,cg=14,cx0=(VW-(cw*3+cg*2))/2;
-  for(let i=0;i<3;i++)charCard(cx0+i*(cw+cg),322,cw,96,i);
+  const cw=140,cg=16,cx0=snap((VW-(cw*3+cg*2))/2);
+  for(let i=0;i<3;i++)charCard(cx0+i*(cw+cg),318,cw,102,i);
 
-  const bw=230,bx=VW/2-bw/2,by=436;
-  rr(c,bx,by,bw,50,14);
-  c.fillStyle=lg(c,0,by,0,by+50,[[0,'rgba(60,180,140,.95)'],[1,'rgba(28,120,92,.95)']]);
-  c.fill();c.strokeStyle='rgba(180,255,220,.6)';c.lineWidth=2;c.stroke();
-  c.save();c.globalAlpha=.8+M.sin(T*3.6)*.2;
-  txt(mode===1?'대결 시작':'시작하기',VW/2,by+32,21,'#fff','center','800');c.restore();
-  hit.push({x0:bx,y0:by,x1:bx+bw,y1:by+50,f:()=>startGame()});
+  const bw=272,bx=snap(VW/2-bw/2),by=438;
+  const on=(T*2|0)%2===0;
+  c.fillStyle='#0d2a1c';c.fillRect(bx,by,bw,54);
+  c.fillStyle=on?'#3fb86f':'#2f9c5c';c.fillRect(bx+PXS,by+PXS,bw-2*PXS,54-2*PXS);
+  c.fillStyle='#7fe6a4';c.fillRect(bx+PXS,by+PXS,bw-2*PXS,PXS);
+  c.fillStyle='#1c6b40';c.fillRect(bx+PXS,by+54-2*PXS,bw-2*PXS,PXS);
+  ptxt(mode===1?'▶ 대결 시작':'▶ 시작하기',VW/2,by+36,26,'#ffffff','center','800','#0a1018');
+  hit.push({x0:bx,y0:by,x1:bx+bw,y1:by+54,f:()=>startGame()});
 
-  txtS(btn? '점프 = 화면 왼쪽 · SPACE   |   대시 = 화면 오른쪽 · ⇧ Shift'
-          : '점프 = 아무 곳이나 클릭 · SPACE   (공중에서 한 번 더 = 2단 점프)',
-    VW/2,508,13,'rgba(226,242,255,.92)','center','600');
-  txtS('SCM  저자 : 컴퓨터공학박사 KIM',VW/2,530,11,
-    'rgba(214,232,248,.78)','center','600');
+  ptxt(btn?'점프 = 왼쪽 · SPACE      대시 = 오른쪽 · SHIFT'
+          :'점프 = 아무 곳 · SPACE   (공중에서 한 번 더 = 2단 점프)',
+    VW/2,508,20,'#cfe0f2','center','700','#0a1018');
+  ptxt('SCM  저자 : 컴퓨터공학박사 KIM',VW/2,532,18,'#9fb4cc','center','700','#0a1018');
 }
 function readyScreen(){
-  c.fillStyle='rgba(6,16,30,.5)';c.fillRect(0,0,VW,VH);
+  c.fillStyle='rgba(8,14,26,.6)';c.fillRect(0,0,VW,VH);
   const n=M.ceil(rdy-0.1), sk=curSkin();
-  if(mode===1)txtS((duel.turn?'2P':'1P')+' 준비!',VW/2,150,38,sk.ui,'center','800');
-  else txtS('준비!',VW/2,150,34,'#ffd24a','center','800');
-  if(n>0){
-    const f=1-(rdy-(n-1)-0.1);
-    c.save();c.globalAlpha=cl(1-f*.4,0,1);
-    c.translate(VW/2,250);c.scale(1+f*.5,1+f*.5);
-    txtS(String(n),0,24,72,'#fff','center','800');
-    c.restore();
-  }else txtS('GO!',VW/2,274,64,'#9ff0c8','center','800');
-  txtS(btn?'왼쪽 = 점프   오른쪽 = 대시':'아무 곳이나 눌러서 점프',
-    VW/2,330,16,'rgba(226,242,255,.95)','center','700');
+  ptxt(mode===1?((duel.turn?'2P':'1P')+' 준비!'):'준비!',
+    VW/2,150,40,mode===1?sk.ui:UI.gold,'center','800','#0a1018');
+  if(n>0)ptxt(String(n),VW/2,280,80,'#ffffff','center','800','#0a1018');
+  else ptxt('GO!',VW/2,280,80,'#9ff0c8','center','800','#0a1018');
+  ptxt(btn?'왼쪽 = 점프    오른쪽 = 대시':'아무 곳이나 눌러서 점프',
+    VW/2,344,24,'#dfeaf7','center','800','#0a1018');
   if(mode===1&&duel.turn===1)
-    txtS('1P 기록은 '+duel.sc[0]+' m — 넘어 보세요!',VW/2,358,15,'#ffd24a','center','700');
+    ptxt('1P 기록 '+duel.sc[0]+' m — 넘어 보세요!',VW/2,380,22,UI.gold,'center','800','#0a1018');
 }
 function deadScreen(){
   if(dead<0.45)return;
   const a=cl((dead-0.45)*2.2,0,1);
-  c.fillStyle='rgba(4,12,24,'+(a*.6)+')';c.fillRect(0,0,VW,VH);
-  c.save();c.globalAlpha=a;
-  const pw=360,ph=190,px=VW/2-pw/2,py=VH/2-ph/2-10;
-  panel(px,py,pw,ph,18);
-  txt(mode===1?((duel.turn?'2P':'1P')+' 종료'):'아쉽네요!',VW/2,py+42,26,'#ff9a7a','center','800');
-  txt(String(scoreM()),VW/2,py+104,50,'#fff','center','800');
-  txt('m',VW/2+(String(scoreM()).length*14)+10,py+104,18,'rgba(220,235,250,.8)','left','700');
-  txt('★ '+coins+' 개',VW/2,py+130,14,'#ffd24a','center','700');
-  if(mode===0)txt(hiMsg||('BEST  '+best[btn]+' m'),VW/2,py+158,15,
-    hiMsg?'#ffd24a':'rgba(220,235,250,.85)','center','800');
-  else txt(duel.turn===0?'이제 2P 차례입니다':'결과를 확인하세요',VW/2,py+158,14,
-    'rgba(220,235,250,.85)','center','700');
-  c.restore();
-  if(dead>1.0){
-    c.save();c.globalAlpha=a*(.7+M.sin(T*3.6)*.3);
-    txt(mode===1?'눌러서 계속':'눌러서 다시 달리기',VW/2,py+ph+38,17,'#fff','center','800');
-    c.restore();
-    txtS('M 키 — 메뉴로',VW/2,py+ph+64,13,'rgba(214,232,250,.8)','center','600');
-  }
+  c.fillStyle='rgba(6,12,22,'+(a*.72)+')';c.fillRect(0,0,VW,VH);
+  if(a<0.5)return;
+  const pw=400,ph=206,px2=snap(VW/2-pw/2),py=snap(VH/2-ph/2-14);
+  ppanel(px2,py,pw,ph);
+  ptxt(mode===1?((duel.turn?'2P':'1P')+' 종료'):'아쉽네요!',
+    VW/2,py+44,30,'#ff9a7a','center','800','#0a1018');
+  ptxt(scoreM()+' m',VW/2,py+112,52,'#ffffff','center','800','#0a1018');
+  ptxt('★ '+coins,VW/2,py+146,22,UI.gold,'center','800','#0a1018');
+  ptxt(mode===0?(hiMsg||('BEST  '+best[btn]+' m'))
+               :(duel.turn===0?'이제 2P 차례':'결과 보기'),
+    VW/2,py+182,22,hiMsg?UI.gold:'#cfe0f2','center','800','#0a1018');
+  if(dead>1.0&&(T*2|0)%2===0)
+    ptxt(mode===1?'▶ 눌러서 계속':'▶ 눌러서 다시',VW/2,py+ph+40,24,'#ffffff','center','800','#0a1018');
+  ptxt('M 키 — 메뉴로',VW/2,py+ph+68,18,UI.dim,'center','700','#0a1018');
 }
 function resultScreen(){
-  c.fillStyle='rgba(4,12,24,.92)';c.fillRect(0,0,VW,VH);
+  c.fillStyle='rgba(6,12,22,.92)';c.fillRect(0,0,VW,VH);
   const w=duel.sc[0]===duel.sc[1]?-1:(duel.sc[0]>duel.sc[1]?0:1);
-  txtS(w<0?'무승부!':((w?'2P':'1P')+' 승리!'),VW/2,96,46,
-    w<0?'#fff':SKINS[w?(skin+1)%3:skin].ui,'center','800');
+  ptxt(w<0?'무승부!':((w?'2P':'1P')+' 승리!'),VW/2,92,48,
+    w<0?'#ffffff':SKINS[w?(skin+1)%3:skin].ui,'center','800','#0a1018');
   for(let i=0;i<2;i++){
-    const x=VW/2+(i?70:-250),y=160,bw=180,bh=200;
-    panel(x,y,bw,bh,16,w===i?.86:.6);
-    if(w===i){c.save();c.globalAlpha=.55+M.sin(T*3)*.25;
-      rr(c,x-3,y-3,bw+6,bh+6,19);
-      c.strokeStyle=SKINS[i?(skin+1)%3:skin].ui;c.lineWidth=2.4;c.stroke();c.restore()}
+    const x=snap(VW/2+(i?60:-260)),y=150,bw=200,bh=210;
     const sk=SKINS[i?(skin+1)%3:skin];
-    drawRunner(c,x+bw/2,y+108,sk,{run:T*7+i*2,air:false,sq:1,t:T,lean:.04});
-    txt(i?'2P':'1P',x+bw/2,y+30,20,sk.ui,'center','800');
-    txt(duel.sc[i]+' m',x+bw/2,y+160,30,'#fff','center','800');
-    if(w===i)txt('WIN',x+bw/2,y+186,15,'#ffd24a','center','800');
+    ppanel(x,y,bw,bh,w===i?'#20344d':'#16233a');
+    if(w===i){c.fillStyle=sk.ui;c.fillRect(x,y,bw,PXS);c.fillRect(x,y+bh-PXS,bw,PXS)}
+    ptxt(i?'2P':'1P',x+bw/2,y+36,26,sk.ui,'center','800','#0a1018');
+    drawRunner(c,x+bw/2,y+128,sk,{run:T*5+i*2,air:false,t:T,px:PXS});
+    ptxt(duel.sc[i]+' m',x+bw/2,y+170,32,'#ffffff','center','800','#0a1018');
+    if(w===i)ptxt('WIN',x+bw/2,y+196,20,UI.gold,'center','800','#0a1018');
   }
-  txtS('눌러서 다시 대결   ·   M 키 — 메뉴로',VW/2,420,16,
-    'rgba(226,242,255,.95)','center','700');
-  txtS('SCM  저자 : 컴퓨터공학박사 KIM',VW/2,520,11,
-    'rgba(214,232,248,.7)','center','600');
+  ptxt('▶ 눌러서 다시 대결    ·    M 메뉴',VW/2,420,24,'#dfeaf7','center','800','#0a1018');
+  ptxt('SCM  저자 : 컴퓨터공학박사 KIM',VW/2,512,18,'#9fb4cc','center','700','#0a1018');
 }
 /* 죽은 뒤 다음 단계 */
 function advance(){
